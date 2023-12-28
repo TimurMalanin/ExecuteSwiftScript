@@ -6,10 +6,16 @@ import androidx.compose.ui.text.withStyle
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.awt.FileDialog
 import java.awt.Frame
+import java.io.BufferedReader
 import java.io.File
 import java.nio.file.Files
 
 val keywords = setOf("fun", "for", "if", "else", "return", "while", "break", "continue", "class", "try", "catch")
+
+fun AnnotatedString.Builder.appendWithCursorUpdate(text: String, cursorPosition: Int, style: SpanStyle? = null): Int =
+    (style?.let { withStyle(it) { append(text) } } ?: append(text))
+        .let { cursorPosition + text.length }
+
 
 fun highlightKeywords(code: String): AnnotatedString {
     val builder = AnnotatedString.Builder()
@@ -21,14 +27,10 @@ fun highlightKeywords(code: String): AnnotatedString {
 
     for (word in words) {
         val textBeforeWord = code.substring(cursorPosition, code.indexOf(word, cursorPosition))
-        builder.append(textBeforeWord)
-        cursorPosition += textBeforeWord.length
+        cursorPosition = builder.appendWithCursorUpdate(textBeforeWord, cursorPosition)
 
-        val color = if (word in keywords) Color.Blue else Color.Black
-        builder.withStyle(style = SpanStyle(color = color)) {
-            append(word)
-        }
-        cursorPosition += word.length
+        val style = if (word in keywords) SpanStyle(color = Color.Blue) else null
+        cursorPosition = builder.appendWithCursorUpdate(word, cursorPosition, style)
     }
 
     if (cursorPosition < code.length) {
@@ -36,6 +38,12 @@ fun highlightKeywords(code: String): AnnotatedString {
     }
 
     return builder.toAnnotatedString()
+}
+
+fun BufferedReader.consumeEachLine(outputFlow: MutableStateFlow<String>) {
+    forEachLine { line ->
+        outputFlow.value += "$line\n"
+    }
 }
 
 fun executeSwiftScript(
@@ -49,16 +57,9 @@ fun executeSwiftScript(
 
     val process = ProcessBuilder("/usr/bin/env", "swift", tempScript.absolutePath).start()
 
-    val reader = process.inputStream.bufferedReader()
-    val errorReader = process.errorStream.bufferedReader()
+    process.inputStream.bufferedReader().consumeEachLine(outputFlow)
+    process.errorStream.bufferedReader().consumeEachLine(outputFlow)
 
-    reader.forEachLine { line ->
-        outputFlow.value += "$line\n"
-    }
-
-    errorReader.forEachLine { line ->
-        outputFlow.value += "$line\n"
-    }
 
     val exitValue = process.waitFor()
     exitCodeState.value = exitValue
@@ -84,10 +85,8 @@ fun chooseSwiftFile(codeText: MutableState<String>): Boolean {
     return !fileSelected.isNullOrEmpty()
 }
 
-fun getExitCodeMessage(exitCode: MutableState<Int?>): String {
-    return when (val code = exitCode.value) {
-        null -> "No runs yet"
-        0 -> "Last run was successful"
-        else -> "Last run failed with exit code $code"
-    }
+fun getExitCodeMessage(exitCode: MutableState<Int?>) = when (val code = exitCode.value) {
+    null -> "No runs yet"
+    0 -> "Last run was successful"
+    else -> "Last run failed with exit code $code"
 }
