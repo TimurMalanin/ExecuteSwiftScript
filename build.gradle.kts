@@ -13,9 +13,6 @@ repositories {
     mavenCentral()
     maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
 }
-//dependencies {
-//    testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
-//}
 
 kotlin {
     jvm {
